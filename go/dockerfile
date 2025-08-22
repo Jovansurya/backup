@@ -1,0 +1,20 @@
+# Menggunakan image resmi Go sebagai base image
+FROM golang:1.21-alpine
+
+# Menentukan working directory di dalam container
+WORKDIR /app
+
+# Menyalin semua file dari direktori go (sumber kode) ke dalam container
+COPY . .
+
+# Menyalin .env.example menjadi .env di dalam container
+RUN cp .env.example .env
+
+# Menjalankan perintah go mod tidy untuk mendownload dependencies
+RUN go mod tidy
+
+# Menentukan port jika aplikasi Anda menggunakan port, misal 8080
+EXPOSE 8080
+
+# Perintah untuk menjalankan aplikasi
+CMD ["go", "run", "main.go"]

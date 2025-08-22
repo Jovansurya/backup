@@ -338,6 +338,20 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "http://192.168.140.100:443")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusNoContent)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+
 func main() {
 	// Initialize database connection
 	initDB()
@@ -347,7 +361,8 @@ func main() {
 
 	// Set up routes
 	http.HandleFunc("/", homeHandler)
-	http.HandleFunc("/api/products", productsHandler)
+	//http.HandleFunc("/api/products", productsHandler)
+	http.Handle("/api/products", corsMiddleware(http.HandlerFunc(productsHandler)))
 	http.HandleFunc("/api/products/", productHandler) // Handle /api/products/{id}
 
 	log.Println("Go Products API Server is running on http://localhost:8080")

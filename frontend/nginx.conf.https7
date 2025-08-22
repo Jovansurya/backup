@@ -1,0 +1,83 @@
+events {
+    worker_connections 1024;
+    # multi_accept on; # Bisa diaktifkan jika diperlukan untuk kinerja tinggi
+}
+
+http {
+    # Sertakan tipe MIME
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    # Definisikan shared memory zone untuk rate limiting.
+    # Nama zone: mylimit
+    # Ukuran: 10 megabytes (cukup untuk sekitar 160.000 IP)
+    # Rate: 10 permintaan per detik per IP
+    # Harap dicatat: nama zone diubah dari "one" menjadi "mylimit" agar konsisten dengan contoh sebelumnya
+    limit_req_zone $binary_remote_addr zone=mylimit:10m rate=10r/s;
+
+    # Server Block untuk HTTP (Port 80) - Redirect ke HTTPS
+    server {
+        listen 80;
+        server_name coba.com www.coba.com;
+
+        # Semua permintaan HTTP akan di-redirect secara permanen ke HTTPS
+        return 301 https://$host$request_uri;
+    }
+
+    # Server Block untuk HTTPS (Port 443) - Secure Configuration
+    server {
+        listen 443 ssl;
+        server_name coba.com www.coba.com;
+
+        # Path ke sertifikat SSL dan private key
+        # Pastikan ini sesuai dengan path di Dockerfile kamu
+        ssl_certificate /etc/ssl/certs/dummy_cert.pem;
+        ssl_certificate_key /etc/ssl/private/dummy_key.pem;
+
+        # Pengaturan protokol SSL yang direkomendasikan
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers on;
+        ssl_ciphers HIGH:!aNULL:!MD5:!RC4;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+
+        # Root directory untuk file website kamu
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+
+        location / {
+            # Terapkan rate limiting untuk semua permintaan
+            # burst=20: Mengizinkan 20 permintaan burst sebelum mulai menunda
+            # nodelay: Permintaan yang burst tapi di bawah batas burst tidak akan ditunda
+            limit_req zone=mylimit burst=20 nodelay;
+
+            # Mencoba mencari file statis, lalu direktori, lalu fallback ke index.html
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Ini sudah ada di config kamu, untuk Go API
+        location /api/products/go { # <<< Ubah path ini agar unik untuk Go API
+             proxy_pass http://192.168.140.100:8080/api/products;
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+             # Tambahkan atau sesuaikan konfigurasi sesuai kebutuhan
+        }
+
+        # <<< TAMBAHKAN BLOK INI UNTUK LARAVEL API
+        location /api/products/laravel { # <<< Path baru untuk Laravel API
+             proxy_pass http://192.168.140.100:8001/api/products; # Sesuaikan port dan IP jika berbeda
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+             # Tambahkan atau sesuaikan konfigurasi sesuai kebutuhan
+        }
+
+        # Optional: Disable logging if you don’t need it
+        # access_log off;
+        # error_log /dev/stderr info;
+    }
+}

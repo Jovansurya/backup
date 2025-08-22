@@ -1,0 +1,39 @@
+# Bagian global settings (opsional, bisa ada atau tidak)
+# worker_processes auto;
+
+events {
+    # Jumlah koneksi yang bisa ditangani oleh setiap worker
+    worker_connections 1024;
+    # multi_accept on; # Bisa diaktifkan jika perlu
+}
+
+http {
+    # ... konfigurasi http yang sudah ada (server, ssl, rate limit, dll.) ...
+    server {
+        listen 80;
+        server_name coba.com www.coba.com;
+        return 301 https://$host$request_uri;
+    }
+
+    server {
+        listen 443 ssl;
+        server_name coba.com www.coba.com;
+
+        ssl_certificate /etc/ssl/certs/dummy_cert.pem;
+        ssl_certificate_key /etc/ssl/private/dummy_key.pem;
+
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers on;
+        ssl_ciphers HIGH:!aNULL:!MD5;
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        root /var/www/example.com/html;
+        index index.html index.htm;
+
+        location / {
+            limit_req zone=mylimit burst=20 nodelay;
+            try_files $uri $uri/ =404;
+        }
+    }
+}
