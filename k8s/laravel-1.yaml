@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app
+  labels:
+    app: laravel
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      imagePullSecrets:
+      - name: harbor-secret
+      # Init container untuk seeding terpisah
+      initContainers:
+      - name: laravel-seeder
+        image: 192.168.140.32:8003/sini/laravel:1.0
+        command: ["/bin/bash"]
+        args: ["-c", "
+          echo 'Running database setup...';
+          php artisan migrate --force;
+          timeout 120 php artisan db:seed --force || echo 'Seeding completed with timeout';
+          echo 'Database setup finished';
+        "]
+        env:
+        - name: DB_HOST
+          value: "mysql-service"
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_DATABASE
+          value: "laravel"
+        - name: DB_USERNAME
+          value: "laravel"
+        - name: DB_PASSWORD
+          value: "qwerty12"
+      containers:
+      - name: laravel
+        image: 192.168.140.32:8003/sini/laravel:1.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8001
+        # Main container hanya start server, seeding sudah selesai di init container
+        command: ["/bin/bash"]
+        args: ["-c", "
+          echo 'Starting Laravel server (seeding already done by init container)...';
+          exec php artisan serve --host=0.0.0.0 --port=8001
+        "]
+        env:
+        - name: DB_HOST
+          value: "mysql-service"
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_DATABASE
+          value: "laravel"
+        - name: DB_USERNAME
+          value: "laravel"
+        - name: DB_PASSWORD
+          value: "qwerty12"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 20
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

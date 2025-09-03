@@ -1,0 +1,112 @@
+# MySQL dengan credentials sesuai ENV Anda
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: "rootpassword"
+        - name: MYSQL_DATABASE
+          value: "laravel"
+        - name: MYSQL_USER
+          value: "laravel"      # Sesuai DB_USER Anda
+        - name: MYSQL_PASSWORD
+          value: "qwerty12"     # Sesuai DB_PASSWORD Anda
+        ports:
+        - containerPort: 3306
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+  type: ClusterIP
+---
+# Laravel dengan ENV variables yang benar
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      imagePullSecrets:
+      - name: harbor-secret
+      containers:
+      - name: laravel
+        image: harbor.yourdomain.com/library/laravel-app:latest
+        ports:
+        - containerPort: 8001
+        env:
+        # Environment variables sesuai dengan yang Anda punya
+        - name: DB_DRIVER
+          value: "mysql"
+        - name: DB_CONNECTION
+          value: "mysql"
+        - name: DB_HOST
+          value: "mysql-service"  # Ganti dari 127.0.0.1
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_USER
+          value: "laravel"        # Sesuai ENV Anda
+        - name: DB_USERNAME
+          value: "laravel"        # Laravel standard
+        - name: DB_PASSWORD
+          value: "qwerty12"       # Sesuai ENV Anda
+        - name: DB_NAME
+          value: "laravel"        # Sesuai ENV Anda
+        - name: DB_DATABASE
+          value: "laravel"        # Laravel standard
+        - name: APP_KEY
+          value: "base64:your-app-key"
+        - name: RUN_MIGRATIONS
+          value: "true"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8001
+          initialDelaySeconds: 90
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: laravel-service
+spec:
+  selector:
+    app: laravel
+  ports:
+    - port: 8001
+      targetPort: 8001
+      nodePort: 30082
+  type: NodePort
