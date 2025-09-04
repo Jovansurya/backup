@@ -1,12 +1,16 @@
 # HASIL FINAL TEST
 
-A complete full-stack application demonstrating API development with Laravel, Go, and React frontend.
 
+# pull image dari kuber
 ![](images/pull.png)
+
+# migrate seed dalam deployment
 ![](images/migrateseed.png)
 
+# hasil deployment laravel & go
 ![](images/laravel&go.png)
 
+# frontend
 ![](images/frontend.png)
 
 ![](images/hasil.png)
