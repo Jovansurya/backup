@@ -2,6 +2,9 @@
 
 A complete full-stack application demonstrating API development with Laravel, Go, and React frontend.
 
+![](images/pull.png)
+![](images/migrateseed.png)
+
 ![](images/laravel&go.png)
 
 ![](images/frontend.png)
