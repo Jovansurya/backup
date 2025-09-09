@@ -1,0 +1,169 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    # Logging
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=mylimit:10m rate=10r/s;
+
+    # HTTP server
+    server {
+        listen 80;
+        server_name _;
+        return 301 https://$host$request_uri;
+    }
+
+    # HTTPS server - Main Configuration
+    server {
+        listen 443 ssl http2;
+        server_name coba.com www.coba.com _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # SSL Configuration (dummy certs for now)
+        ssl_certificate /etc/ssl/certs/dummy_cert.pem;
+        ssl_certificate_key /etc/ssl/private/dummy_key.pem;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        ssl_prefer_server_ciphers on;
+        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-P>
+        ssl_session_cache shared:SSL:10m;
+        ssl_session_timeout 10m;
+        ssl_dhparam /etc/ssl/certs/dhparam.pem;
+  # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Referrer-Policy "no-referrer-when-downgrade" always;
+        add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'; frame-ancestors 'self';" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+        # Rate limiting
+        limit_req zone=mylimit burst=20 nodelay;
+
+        # Frontend - React App Static Files
+        location / {
+            try_files $uri $uri/ /index.html;
+
+            # Cache control untuk HTML files
+            location ~* \.html$ {
+                expires -1;
+                add_header Cache-Control "no-cache, no-store, must-revalidate";
+                add_header Pragma "no-cache";
+            }
+        }
+
+        # Go API Proxy
+        location /api/products/go {
+            rewrite ^/api/products/go(.*) /api/products$1 break;
+
+            proxy_pass http://10.100.242.28:8080/api/products;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_buffering off;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+            proxy_send_timeout 30s;
+
+            add_header Access-Control-Allow-Origin "$http_origin" always;
+            add_header Access-Control-Allow-Credentials "true" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With" always;
+
+            if ($request_method = OPTIONS) {
+                return 204;
+            }
+        }
+
+        # Laravel API Proxy
+        location /api/products/laravel {
+            rewrite ^/api/products/laravel(.*) /api/products$1 break;
+
+            proxy_pass http://10.101.185.140:8001/api/products;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_buffering off;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_connect_timeout 10s;
+            proxy_read_timeout 300s;
+            proxy_send_timeout 300s;
+
+            client_max_body_size 50M;
+
+            add_header Access-Control-Allow-Origin "$http_origin" always;
+            add_header Access-Control-Allow-Credentials "true" always;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Accept,Authorization,Cache-Control,Content-Type,DNT,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With" always;
+
+            if ($request_method = OPTIONS) {
+                return 204;
+            }
+        }
+
+        # Cache static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|webp)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+            add_header Access-Control-Allow-Origin "*";
+            try_files $uri =404;
+        }
+
+        # Service worker
+        location = /service-worker.js {
+            expires off;
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+        }
+
+        # Manifest and favicon
+        location ~* \.(manifest|xml)$ {
+            expires 1d;
+            add_header Cache-Control "public";
+        }
+
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        # Nginx status
+        location /nginx-status {
+            stub_status on;
+            access_log off;
+            allow 127.0.0.1;
+            allow 10.0.0.0/8;
+            deny all;
+        }
+
+        # Block hidden files
+        location ~ /\. {
+            deny all;
+        }
+    }
+}
