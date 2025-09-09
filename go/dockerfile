@@ -1,20 +1,48 @@
-# Menggunakan image resmi Go sebagai base image
-FROM golang:1.21-alpine
+# Dockerfile Go - Perbaikan minimal dari yang asli
+FROM golang:1.20-alpine AS builder
 
-# Menentukan working directory di dalam container
+# Install ca-certificates
+RUN apk update && apk add --no-cache ca-certificates git
+
+# Set working directory di dalam container  
 WORKDIR /app
 
-# Menyalin semua file dari direktori go (sumber kode) ke dalam container
+# Copy go.mod dan go.sum terlebih dahulu untuk caching dependencies
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy seluruh source code ke folder kerja di container
 COPY . .
 
-# Menyalin .env.example menjadi .env di dalam container
-RUN cp .env.example .env
+# Build aplikasi Go menjadi binary statis bernama 'main'
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
-# Menjalankan perintah go mod tidy untuk mendownload dependencies
-RUN go mod tidy
+# Stage 2: Jalankan binary di image yang minimalis (alpine)
+FROM alpine:latest
 
-# Menentukan port jika aplikasi Anda menggunakan port, misal 8080
+# Install ca-certificates supaya app bisa akses https jika perlu
+RUN apk --no-cache add ca-certificates curl
+
+# Create non-root user untuk security
+RUN adduser -D -s /bin/sh appuser
+
+# Copy binary dari builder stage
+COPY --from=builder /app/main /usr/local/bin/main
+
+# Set ownership ke non-root user
+RUN chown appuser:appuser /usr/local/bin/main
+
+# Switch ke non-root user
+USER appuser
+
+# Health check (tambahan untuk Kubernetes)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Expose port
 EXPOSE 8080
 
-# Perintah untuk menjalankan aplikasi
-CMD ["go", "run", "main.go"]
+# Set file binary 'main' sebagai entrypoint app
+ENTRYPOINT ["/usr/local/bin/main"]
